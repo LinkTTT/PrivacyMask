@@ -250,6 +250,14 @@ function Test-Controller {
     }
 }
 
+function Get-UnlockTitle {
+    $assembly = [Reflection.Assembly]::LoadFrom($Exe)
+    $language = $assembly.GetType('MaskLanguage')
+    if ($null -eq $language) { return -join (0x89E3, 0x9664, 0x906E, 0x7F69 | ForEach-Object { [char]$_ }) }
+    $selected = $language.GetMethod('Load', [Reflection.BindingFlags]'NonPublic, Static').Invoke($null, @())
+    return $language.GetProperty('UnlockTitle', [Reflection.BindingFlags]'NonPublic, Instance').GetValue($selected)
+}
+
 function Test-Settings {
     $data = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'PrivacyMaskPoC'
     $appearancePath = Join-Path $data 'appearance.dat'
@@ -330,7 +338,7 @@ function Test-Settings {
         $blocked = Invoke-MaskCommand Stop -ExpectedExitCode 1
         Assert-Probe ($blocked.reason -eq 'password-required' -and $blocked.passwordProtected) 'Unauthenticated Stop did not request the password.'
         [MaskProbe]::ExitHotkey()
-        $promptTitle = -join (0x89E3, 0x9664, 0x906E, 0x7F69 | ForEach-Object { [char]$_ })
+        $promptTitle = Get-UnlockTitle
         $wait = [Diagnostics.Stopwatch]::StartNew()
         do {
             Wait-Ui 100
@@ -411,7 +419,7 @@ function Test-SetupOrder($Fixture) {
     $status = Invoke-MaskCommand Status
     if ($status.passwordProtected) {
         [MaskProbe]::ExitHotkey()
-        $title = -join (0x89E3, 0x9664, 0x906E, 0x7F69 | ForEach-Object { [char]$_ })
+        $title = Get-UnlockTitle
         $wait = [Diagnostics.Stopwatch]::StartNew()
         do {
             Wait-Ui 80

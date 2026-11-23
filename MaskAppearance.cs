@@ -101,7 +101,7 @@ internal sealed class MaskAppearance : IDisposable
         using (var file = File.OpenRead(path))
         {
             if (file.Length > MaxBytes)
-                throw new InvalidDataException("图片文件过大。");
+                throw new InvalidDataException("The image file is too large.");
             Bitmap decoded = Decode(file);
             if (Picture != null)
                 Picture.Dispose();
@@ -114,7 +114,7 @@ internal sealed class MaskAppearance : IDisposable
         using (var source = Image.FromStream(stream, true, true))
         {
             if (source.Width <= 0 || source.Height <= 0 || (long)source.Width * source.Height > 65000000)
-                throw new InvalidDataException("图片像素尺寸过大。");
+                throw new InvalidDataException("The pixel dimensions are too large.");
             double scale = Math.Min(1, 4096.0 / Math.Max(source.Width, source.Height));
             var bitmap = new Bitmap(Math.Max(1, (int)(source.Width * scale)), Math.Max(1, (int)(source.Height * scale)),
                 PixelFormat.Format32bppPArgb);

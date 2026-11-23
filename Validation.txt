@@ -107,3 +107,10 @@ PASS candidate Test-PrivacyMask.ps1 -CoverRegression with the current profile's 
 PASS full controller, appearance and password regression on the preceding staging build using an isolated settings directory. Trial secret and settings were confined to that directory.
 PASS packaged EXE hash and Status. Existing user settings were left in place.
 Final native Computer Use capture retest was interrupted when the Windows desktop locked. Independent remote-client acceptance of the prompt remains pending.
+
+2026-11-23 (Asia/Shanghai), English and Simplified Chinese interface
+Preview SHA-256: A03A0CCA1FC082468CE2C1C8605775B1D61ACD803C57F89A90647B14565330AA
+PASS native UI check of the English default and switching Settings and the main panel to Simplified Chinese without a restart.
+PASS isolated WinForms checks for restoring the selected language in a fresh panel, switching back to English, an invalid preference falling back to English, and preserving the saved appearance and password files byte for byte.
+PASS Test-PrivacyMask.ps1 -IncludeControl -IncludeSettings with the English default and with Chinese selected in isolated profiles. The password prompt was found under the expected language and dual-monitor capture and input checks passed.
+PASS packaged executable hash and Status. Current user preferences were not used by the language-switch tests.

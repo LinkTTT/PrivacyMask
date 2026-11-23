@@ -68,7 +68,7 @@ internal sealed class MaskPassword
                 if (replacement.Length > 0 || existing == null)
                 {
                     if (replacement.Length < 4 || replacement.Length > LengthLimit || string.IsNullOrWhiteSpace(replacement))
-                        throw new ArgumentException("请输入至少 4 个字符的密码。");
+                        throw new ArgumentException("The password must contain between 4 and 128 characters and cannot be blank.");
                     var freshSalt = new byte[16];
                     using (var random = RandomNumberGenerator.Create())
                         random.GetBytes(freshSalt);

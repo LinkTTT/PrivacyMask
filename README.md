@@ -8,14 +8,14 @@ PrivacyMask covers the physical displays of an unlocked Windows PC during remote
 
 Use Windows 10 version 2004 (build 19041) or later. The application runs in the active, unlocked physical desktop session using the built-in .NET Framework. It needs no installation or administrator privileges.
 
-1. Download and run [the Windows preview](preview/PrivacyMask.exe). The control panel currently uses Simplified Chinese.
-2. Choose a duration and click **Start Mask (开始遮罩)**. Wait until the panel shows **Mask active (遮罩已开启)** before opening the target app.
-3. Close the panel if you like. To end the session, reopen it and click **Stop Mask (停止遮罩)**, or press `Ctrl+Alt+Shift+Esc`.
+1. Download and run [the Windows preview](preview/PrivacyMask.exe). English is the default. To switch languages, use **Settings → Language** and select **简体中文**. The app remembers your choice.
+2. Choose a duration and click **Start Mask**. Wait until the panel shows **Mask active** before opening the target app.
+3. Close the panel if you like. To end the session, reopen it and click **Stop Mask**, or press `Ctrl+Alt+Shift+Esc`.
 
 ### Appearance and password
 
-- In **Settings (设置…)**, choose a black screen, a custom image, or large text. PNG, JPG, and BMP images are saved locally and centered on each screen with their aspect ratio preserved. Large text supports line breaks and scales to each screen. Changes apply the next time you start the mask.
-- Under **Password and End Mode (密码与结束方式…)**, set a password to require it for manual dismissal. The **Unlock Mask (解除遮罩)** dialog appears above the mask and can be selected from a compatible remote client's window list. Its input is masked. Changing or disabling protection requires the current password. PrivacyMask stores a salted hash locally.
+- In **Settings**, choose a black screen, a custom image, or large text. PNG, JPG, and BMP images are saved locally and centered on each screen with their aspect ratio preserved. Large text supports line breaks and scales to each screen. Changes apply the next time you start the mask.
+- Under **Password and End Mode**, set a password to require it for manual dismissal. The **Unlock Mask** dialog appears above the mask and can be selected from a compatible remote client's window list. Its input is masked. Changing or disabling protection requires the current password. PrivacyMask stores a salted hash locally.
 - Choose a **timed session** (5, 10, or 30 minutes, with 10 minutes as the default) or, with a password set, **stay active until unlocked**. A password-protected timed session still ends automatically at its deadline. Ending it early requires the password.
 - Windows remains unlocked and people at the keyboard can still operate it. Locking Windows, disconnecting the Windows session, or changing the display layout or DPI ends the mask. If you forget the password, press `Ctrl+Alt+Del` to reach Task Manager and end `PrivacyMask.exe`.
 

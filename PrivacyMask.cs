@@ -122,7 +122,11 @@ internal static class PrivacyMask
         catch (Exception ex)
         {
             if (!background)
-                MessageBox(IntPtr.Zero, ex.Message + "\n\nLog: " + (logPath ?? "unavailable"), "PrivacyMask", 0x10);
+            {
+                MaskLanguage language = MaskLanguage.Load();
+                MessageBox(IntPtr.Zero, ex.Message + "\n\n" + language.Text("Log: ", "日志：") +
+                    (logPath ?? language.Text("unavailable", "不可用")), "PrivacyMask", 0x10);
+            }
             return 1;
         }
     }
