@@ -1,0 +1,109 @@
+2026-11-23 (Asia/Shanghai), Windows 10.0.26300
+Revised EXE background launch: automated test exit code 0
+Capture: BitBlt(SRCCOPY | CAPTUREBLT), synthetic fixture pixel samples
+
+PASS baseline \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS baseline \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+PASS baseline-normal \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS baseline-normal \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+READY 0x00 bounds=0,-733,3840,1933 log=%LOCALAPPDATA%\PrivacyMaskPoC\PrivacyMask-18552.log
+PASS control \\.\DISPLAY1 at {X=844,Y=563} -> #000000
+PASS control \\.\DISPLAY2 at {X=2764,Y=-230} -> #000000
+PASS exit=timeout
+PASS before-exclusion \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS before-exclusion \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+READY 0x11 bounds=0,-733,3840,1933 log=%LOCALAPPDATA%\PrivacyMaskPoC\PrivacyMask-33904.log
+PASS geometry \\.\DISPLAY1 {X=0,Y=0,Width=1920,Height=1200}
+PASS geometry \\.\DISPLAY2 {X=1920,Y=-733,Width=1920,Height=1080}
+PASS focus unchanged at launch
+PASS excluded \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS excluded \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+PASS click, activation and typing \\.\DISPLAY2
+PASS click, activation and typing \\.\DISPLAY1
+PASS exit=hotkey
+PASS restored \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS restored \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+PASS all local GDI and input checks
+
+Original EXE: visible, topmost=False, behind Calculator.
+2026-11-23T14:32:42.5239250+08:00 calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0
+2026-11-23T14:32:42.7330620+08:00 calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0 | mask 11266 visible=True topmost=False foreground=False exStyle=0x080800A0 rect=(0,-733,3840,1200) affinity=11
+2026-11-23T14:33:27.7355040+08:00 calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0
+2026-11-23T14:33:31.6202925+08:00 mask 71252 visible=True topmost=True foreground=False exStyle=0x080800A8 rect=(0,-733,3840,1200) affinity=11 | calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0
+
+Revised EXE: visible, topmost=True, above Calculator throughout native capture and input.
+2026-11-23T14:34:52.8347629+08:00 calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0
+2026-11-23T14:34:53.3206380+08:00 mask 311F6 visible=True topmost=True foreground=False exStyle=0x080800A8 rect=(0,-733,3840,1200) affinity=11 | calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0
+2026-11-23T14:35:25.6524648+08:00 calc 511F2 visible=True topmost=False foreground=True exStyle=0x00200100 rect=(1421,201,1839,888) affinity=0
+Native window screenshots: 23 -> 232 by click -> 2,327 by keyboard.
+2026-11-23T14:34:53.2885033+08:00 START Windows 10.0.26300; timeoutSeconds=50; captureControl=False
+2026-11-23T14:34:53.3075001+08:00 READY hwnd=0x311F6 affinity=0x11 bounds=0,-733,3840,1933 topmost=True hotkey=Ctrl+Alt+Shift+Esc
+2026-11-23T14:35:25.6514583+08:00 EXIT reason=hotkey
+
+30-second live retest. Native Calculator screenshot changed from 0 to 2 after coordinate click.
+2026-11-23T15:17:37.3319532+08:00 START Windows 10.0.26300; timeoutSeconds=30; captureControl=False
+2026-11-23T15:17:37.3516703+08:00 READY hwnd=0x261022 affinity=0x11 bounds=0,-733,3840,1933 topmost=True hotkey=Ctrl+Alt+Shift+Esc
+2026-11-23T15:18:07.3656054+08:00 EXIT reason=timeout
+
+30-second physical observation retest. Native Calculator screenshots: 2 -> 27 -> 276.
+2026-11-23T15:20:15.9384358+08:00 START Windows 10.0.26300; timeoutSeconds=30; captureControl=False
+2026-11-23T15:20:15.9583537+08:00 READY hwnd=0x131218 affinity=0x11 bounds=0,-733,3840,1933 topmost=True hotkey=Ctrl+Alt+Shift+Esc
+2026-11-23T15:20:45.9537159+08:00 EXIT reason=timeout
+User observed both physical displays black and Calculator hidden. ChatGPT Computer Use UI remained visible.
+
+Migration check from the project root.
+All six source files matched by SHA-256 before updating project documentation.
+Build script rebuilt the migrated source in a scratch folder. The original, physically verified EXE was retained in the project.
+PASS baseline \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS baseline \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+PASS baseline-normal \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS baseline-normal \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+READY 0x00 bounds=0,-733,3840,1933 log=%LOCALAPPDATA%\PrivacyMaskPoC\PrivacyMask-18204.log
+PASS control \\.\DISPLAY1 at {X=844,Y=563} -> #000000
+PASS control \\.\DISPLAY2 at {X=2764,Y=-230} -> #000000
+PASS exit=timeout
+PASS before-exclusion \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS before-exclusion \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+READY 0x11 bounds=0,-733,3840,1933 log=%LOCALAPPDATA%\PrivacyMaskPoC\PrivacyMask-30028.log
+PASS geometry \\.\DISPLAY1 {X=0,Y=0,Width=1920,Height=1200}
+PASS geometry \\.\DISPLAY2 {X=1920,Y=-733,Width=1920,Height=1080}
+PASS focus unchanged at launch
+PASS excluded \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS excluded \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+PASS click, activation and typing \\.\DISPLAY2
+PASS click, activation and typing \\.\DISPLAY1
+PASS exit=hotkey
+PASS restored \\.\DISPLAY1 at {X=844,Y=563} -> #FF00FF
+PASS restored \\.\DISPLAY2 at {X=2764,Y=-230} -> #00FF00
+PASS all local GDI and input checks
+
+2026-11-23 (Asia/Shanghai), remote-agent lifecycle preview
+Candidate built and tested in a separate directory, then staged under preview/.
+SHA-256: 3224277774A833101DFB6213F6119EB145301F3CB2982359651927BE64B58FF4
+Original physically verified PrivacyMask.exe kept at the project root.
+PASS Test-PrivacyMask.ps1 -Exe <candidate> -IncludeControl and repeat against the staged preview (exit 0).
+PASS packaged PowerShell script with no explicit EXE path for Status, Start, and Stop.
+PASS both display geometries, GDI control/exclusion/restoration, unchanged focus, click and typing on each display, timeout and hotkey.
+PASS JSON readiness and status, repeated Start with a single deadline, repeated Stop, worker timeout after the controller exited, capture-control status, and hotkey conflict before an overlay appeared.
+PASS three rounds of six concurrent Start requests, one shared deadline in each round.
+PASS controlled window-message tests for display-change, session-lock and session-disconnect. Actual hardware changes and actual locking/disconnection were not performed.
+PASS local native Computer Use: Start from the panel, close the panel with the mask running, view and operate Calculator (0 -> 2 by coordinate click -> 27 by number-row key), reopen the panel with the same countdown still running, Stop, and see inactive status.
+Pending for this candidate: simultaneous physical-screen observation, phone Dots, non-Windows Codex, and a separate Agent client.
+
+2026-11-23 (Asia/Shanghai), appearance and password preview
+Candidate SHA-256: 77C1DB5E3504C006508711ADD74F81A9F480B6B35E52B6897621AE4ED839E361
+PASS Test-PrivacyMask.ps1 -IncludeControl -IncludeSettings in an unlocked two-monitor Windows console (exit 0).
+PASS selected image on both monitors after removing the source image, centered large text on both monitors, and unchanged underlying fixture pixels under GDI capture exclusion in both appearance modes.
+PASS protected hotkey opened an unlock prompt while the mask stayed active. The controller rejected a missing or wrong password and accepted the correct test password.
+PASS continuous and timed defaults and per-start overrides. A password-protected timed session expired automatically. A continuous session required a verified Stop through the app.
+PASS local native Computer Use opened and displayed the settings dialog and canceled it. Credential entry in the GUI was not tested through Computer Use.
+PASS preview package hash matched the tested build, required an existing password for UntilUnlocked, rejected mixed end modes, and reported inactive after cleanup. Temporary settings removed. The root EXE retains its original hash.
+Pending: simultaneous physical-screen observation of custom appearance and independent remote-client acceptance.
+
+2026-11-23 (Asia/Shanghai), unlock prompt visibility and window order
+Preview SHA-256: D6A7CB6593367EC255595D5B2AC53DC2A872D53289ECA18686929CA1D8F83803
+REPRODUCED on previous preview: Ctrl+Tab switched the test tab and promoted its window above the mask, even though the mask retained WS_EX_TOPMOST.
+PASS candidate Test-PrivacyMask.ps1 -CoverRegression with the current profile's existing password. Ctrl+Tab changed tabs without stealing focus. The overlay covered the promoted window, GDI still saw underlying fixtures, the hotkey opened a visible standalone password dialog above the mask, and a competing window promotion preserved that order. The timed fixture exited normally.
+PASS full controller, appearance and password regression on the preceding staging build using an isolated settings directory. Trial secret and settings were confined to that directory.
+PASS packaged EXE hash and Status. Existing user settings were left in place.
+Final native Computer Use capture retest was interrupted when the Windows desktop locked. Independent remote-client acceptance of the prompt remains pending.
