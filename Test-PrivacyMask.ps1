@@ -1,4 +1,4 @@
-param([string]$Exe, [switch]$IncludeControl, [switch]$IncludeSettings, [switch]$CoverRegression)
+param([string]$Exe, [switch]$IncludeControl, [switch]$IncludeSettings, [switch]$CoverRegression, [switch]$DisplayRegression, [switch]$TrayRegression)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -49,7 +49,7 @@ public static class MaskProbe
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out int processId);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int length);
 
-    public static IntPtr FindVisibleWindow(int processId, string title)
+    public static IntPtr FindVisibleWindow(int processId, string title, bool prefix = false)
     {
         IntPtr found = IntPtr.Zero;
         EnumWindows((window, parameter) =>
@@ -59,7 +59,8 @@ public static class MaskProbe
             if (owner != processId || !IsWindowVisible(window)) return true;
             var text = new StringBuilder(128);
             GetWindowText(window, text, text.Capacity);
-            if (text.ToString() != title) return true;
+            if (prefix ? !text.ToString().StartsWith(title, StringComparison.Ordinal) : text.ToString() != title)
+                return true;
             found = window;
             return false;
         }, IntPtr.Zero);
@@ -119,6 +120,22 @@ public static class MaskProbe
     {
         Send(KeyStroke(0x11, '\0', 0), KeyStroke(0x12, '\0', 0), KeyStroke(0x10, '\0', 0), KeyStroke(0x1B, '\0', 0),
              KeyStroke(0x1B, '\0', 2), KeyStroke(0x10, '\0', 2), KeyStroke(0x12, '\0', 2), KeyStroke(0x11, '\0', 2));
+    }
+
+    public static void PressShortcut(int binding)
+    {
+        var input = new System.Collections.Generic.List<Input>();
+        ushort[] modifiers = { 0x12, 0x11, 0x10, 0x5B };
+        for (int i = 0; i < modifiers.Length; i++)
+            if ((binding & (0x100 << i)) != 0)
+                input.Add(KeyStroke(modifiers[i], '\0', 0));
+        ushort key = (ushort)(binding & 0xff);
+        input.Add(KeyStroke(key, '\0', 0));
+        input.Add(KeyStroke(key, '\0', 2));
+        for (int i = modifiers.Length - 1; i >= 0; i--)
+            if ((binding & (0x100 << i)) != 0)
+                input.Add(KeyStroke(modifiers[i], '\0', 2));
+        Send(input.ToArray());
     }
 
     public static void NextTab()
@@ -192,12 +209,87 @@ function Assert-Capture([string]$Phase, [bool]$ExpectBlack) {
     }
 }
 
-function Invoke-MaskCommand([string]$Action, [int]$Seconds = 600, [int]$ExpectedExitCode = 0) {
+function Invoke-MaskCommand([string]$Action, [int]$Seconds = 600, [int]$ExpectedExitCode = 0, [int]$Display) {
     $arguments = @{ Exe = $Exe }
     if ($PSBoundParameters.ContainsKey('Seconds')) { $arguments.Seconds = $Seconds }
+    if ($PSBoundParameters.ContainsKey('Display')) { $arguments.Display = $Display }
     $json = & (Join-Path $PSScriptRoot 'Invoke-PrivacyMask.ps1') $Action @arguments
     Assert-Probe ($ExpectedExitCode -eq -1 -or $LASTEXITCODE -eq $ExpectedExitCode) "$Action returned unexpected exit code $LASTEXITCODE. $json"
     return $json | ConvertFrom-Json
+}
+
+function Test-DisplayScope {
+    $secondary = $fixtures | Where-Object { -not $_.Screen.Primary } | Select-Object -First 1
+    Assert-Probe ($null -ne $secondary) 'The display regression requires a secondary display in Extend mode.'
+    $number = [int]($secondary.Screen.DeviceName -replace '^.*DISPLAY', '')
+    $bounds = $secondary.Screen.Bounds
+    $foreground = [MaskProbe]::GetForegroundWindow()
+    $control = Start-Mask @('--seconds', '3', '--capture-control', '--display', $number)
+    $hwnd = Wait-Ready $control '0x00'
+    $rect = [MaskProbe+Rect]::new()
+    Assert-Probe ([MaskProbe]::GetWindowRect($hwnd, [ref]$rect) -and $rect.Left -eq $bounds.Left -and
+        $rect.Top -eq $bounds.Top -and $rect.Right -eq $bounds.Right -and $rect.Bottom -eq $bounds.Bottom) 'The mask rectangle differs from the secondary display.'
+    Wait-Ui 150
+    Assert-Probe ([MaskProbe]::GetForegroundWindow() -eq $foreground) 'The secondary mask stole focus at launch.'
+    foreach ($fixture in $fixtures) {
+        $point = $fixture.Form.PointToScreen([Drawing.Point]::new(20, 20))
+        $pixel = [MaskProbe]::Sample($point.X, $point.Y)
+        if ($fixture.Screen.DeviceName -eq $secondary.Screen.DeviceName) {
+            Assert-Probe ($pixel -ne $fixture.Color) 'The non-excluded mask did not cover the secondary fixture.'
+        }
+        else {
+            Assert-Probe ($pixel -eq $fixture.Color) "Display $($fixture.Screen.DeviceName) was unexpectedly masked."
+        }
+        Write-Host "PASS display-selection control $($fixture.Screen.DeviceName) -> $pixel"
+    }
+    Assert-Exit $control 'timeout' 6000
+    Wait-Ui 150
+    Assert-Capture 'display-control-restored' $false
+
+    $missing = Invoke-MaskCommand Start -Seconds 5 -Display ([int]::MaxValue) -ExpectedExitCode 1
+    Assert-Probe ($missing.reason -eq 'display-unavailable' -and (Invoke-MaskCommand Status).state -eq 'inactive') 'A missing display did not fail without starting a mask.'
+    $started = Invoke-MaskCommand Start -Seconds 12 -Display $number
+    $status = Invoke-MaskCommand Status
+    $repeated = Invoke-MaskCommand Start -Seconds 30 -Display $number
+    $mismatch = Invoke-MaskCommand Start -Seconds 30 -ExpectedExitCode 1
+    Assert-Probe ($started.state -eq 'active' -and $started.display -eq $number -and $status.display -eq $number -and
+        $repeated.display -eq $number -and $repeated.expiresAt -ceq $started.expiresAt -and
+        $mismatch.reason -eq 'mask-scope-mismatch' -and $mismatch.display -eq $number) 'Start or Status did not report the active display correctly.'
+    if ($started.passwordProtected) {
+        $blocked = Invoke-MaskCommand Stop -ExpectedExitCode 1
+        Assert-Probe ($status.passwordProtected -and $blocked.reason -eq 'password-required') 'The scoped mask lost password protection.'
+    }
+    Assert-Capture 'secondary-mask-excluded' $false
+    foreach ($fixture in $fixtures) {
+        $point = $fixture.Button.PointToScreen([Drawing.Point]::new(12, 10))
+        [MaskProbe]::Click($point.X, $point.Y)
+        Wait-Ui 150
+        Assert-Probe ([int]$fixture.Button.Tag -eq 1 -and [MaskProbe]::GetForegroundWindow() -eq $fixture.Form.Handle) "Click did not reach $($fixture.Screen.DeviceName)."
+        $point = $fixture.Edit.PointToScreen([Drawing.Point]::new(12, 10))
+        [MaskProbe]::Click($point.X, $point.Y)
+        Wait-Ui 150
+        Assert-Probe ($fixture.Edit.Focused -and [MaskProbe]::GetForegroundWindow() -eq $fixture.Form.Handle) 'Test textbox did not gain focus. No text was injected.'
+        [MaskProbe]::TypeX()
+        Wait-Ui 150
+        Assert-Probe ($fixture.Edit.Text -ceq 'x') "Typing did not reach $($fixture.Screen.DeviceName)."
+    }
+    $hwnd = [MaskProbe]::FindTitledWindow('Privacy Mask PoC')
+    Assert-Probe ($hwnd -ne [IntPtr]::Zero -and [MaskProbe]::PostMessage($hwnd, 0x7E, [UIntPtr]::Zero, [IntPtr]::Zero)) 'Could not post the display change notification.'
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        Wait-Ui 100
+        $result = Invoke-MaskCommand Status -ExpectedExitCode -1
+    } while ($result.state -ne 'inactive' -and $timer.ElapsedMilliseconds -lt 4000)
+    Assert-Probe ($result.state -eq 'inactive') 'The scoped session did not end after the display change notification.'
+    Assert-Capture 'secondary-mask-restored' $false
+    Write-Host 'PASS selected display, scope reporting, mismatch protection, input and restoration'
+
+    $all = Invoke-MaskCommand Start -Seconds 3
+    Assert-Probe ($all.state -eq 'active' -and $null -eq $all.display) 'Omitting -Display did not start an all-displays session.'
+    Assert-Capture 'all-displays-mask-excluded' $false
+    Wait-Ui 3200
+    Assert-Probe ((Invoke-MaskCommand Status).state -eq 'inactive') 'The all-displays session did not end at its deadline.'
+    Write-Host 'PASS all-displays default and timed exit'
 }
 
 function Test-Controller {
@@ -256,6 +348,86 @@ function Get-UnlockTitle {
     if ($null -eq $language) { return -join (0x89E3, 0x9664, 0x906E, 0x7F69 | ForEach-Object { [char]$_ }) }
     $selected = $language.GetMethod('Load', [Reflection.BindingFlags]'NonPublic, Static').Invoke($null, @())
     return $language.GetProperty('UnlockTitle', [Reflection.BindingFlags]'NonPublic, Instance').GetValue($selected)
+}
+
+function Test-Tray {
+    Assert-Probe ((Invoke-MaskCommand Status).state -eq 'inactive') 'Stop any active mask before running the tray regression.'
+    $assembly = [Reflection.Assembly]::LoadFrom($Exe)
+    $bindings = $assembly.GetType('MaskHotkeys').GetMethod('Load', [Reflection.BindingFlags]'NonPublic, Static').Invoke($null, @())
+    Assert-Probe (@($bindings | Where-Object { $_ -ne 0 }).Count -eq 3) 'Enable all three shortcuts before running the tray regression.'
+
+    $tray = Start-Process -FilePath $Exe -ArgumentList '--tray' -PassThru
+    $runs.Add($tray)
+    Wait-Ui 450
+    Assert-Probe (-not $tray.HasExited -and [MaskProbe]::FindVisibleWindow($tray.Id, 'PrivacyMask', $true) -eq [IntPtr]::Zero) '--tray did not start with the panel hidden.'
+    $reopen = Start-Process -FilePath $Exe -PassThru
+    $runs.Add($reopen)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        Wait-Ui 60
+        $panel = [MaskProbe]::FindVisibleWindow($tray.Id, 'PrivacyMask', $true)
+    } while (($panel -eq [IntPtr]::Zero -or -not $reopen.HasExited) -and $clock.ElapsedMilliseconds -lt 5000)
+    Assert-Probe ($panel -ne [IntPtr]::Zero -and $reopen.HasExited -and $reopen.ExitCode -eq 0) 'Relaunch did not show the panel in the single tray instance.'
+    Assert-Probe ([MaskProbe]::PostMessage($panel, 0x112, [UIntPtr]::new(0xF060), [IntPtr]::Zero)) 'Could not close the tray panel.'
+    Wait-Ui 250
+    Assert-Probe (-not $tray.HasExited -and -not [MaskProbe]::IsWindowVisible($panel)) 'Closing the panel did not leave the tray running.'
+    Write-Host 'PASS single tray instance, panel reopen and close-to-tray'
+
+    $screenNumbers = @([Windows.Forms.Screen]::AllScreens | ForEach-Object { [int]($_.DeviceName -replace '^.*DISPLAY', '') })
+    try {
+        for ($scope = 0; $scope -lt $bindings.Length; $scope++) {
+            if ($scope -ne 0 -and $scope -notin $screenNumbers) {
+                Write-Host "SKIP installed display $scope is unavailable"
+                continue
+            }
+            $foreground = [MaskProbe]::GetForegroundWindow()
+            [MaskProbe]::PressShortcut($bindings[$scope])
+            $clock.Restart()
+            do {
+                Wait-Ui 75
+                $status = Invoke-MaskCommand Status -ExpectedExitCode -1
+            } while ($status.state -ne 'active' -and $clock.ElapsedMilliseconds -lt 6500)
+            $expectedDisplay = if ($scope -eq 0) { $null } else { $scope }
+            Assert-Probe ($status.state -eq 'active' -and $status.display -eq $expectedDisplay) "Shortcut did not activate scope $scope. $($status | ConvertTo-Json -Compress)"
+            Assert-Probe ([MaskProbe]::GetForegroundWindow() -eq $foreground) "Shortcut for scope $scope changed the foreground window."
+            if ($scope -eq 0) {
+                [MaskProbe]::PressShortcut($bindings[0])
+                [MaskProbe]::PressShortcut($bindings[1])
+                Wait-Ui 300
+                $repeat = Invoke-MaskCommand Status
+                Assert-Probe ($repeat.state -eq 'active' -and $null -eq $repeat.display -and
+                    $repeat.expiresAt -eq $status.expiresAt) 'A repeated or different shortcut changed the active session.'
+            }
+            [MaskProbe]::ExitHotkey()
+            if ($status.passwordProtected) {
+                $title = Get-UnlockTitle
+                $clock.Restart()
+                do {
+                    Wait-Ui 75
+                    $prompt = [MaskProbe]::FindTitledWindow($title)
+                } while ($prompt -eq [IntPtr]::Zero -and $clock.ElapsedMilliseconds -lt 3000)
+                Assert-Probe ($prompt -ne [IntPtr]::Zero -and (Invoke-MaskCommand Status).state -eq 'active') 'The unlock shortcut did not preserve a protected mask.'
+                Stop-TrayTestWorker $tray.Id
+            }
+            $clock.Restart()
+            do {
+                Wait-Ui 75
+                $stopped = Invoke-MaskCommand Status -ExpectedExitCode -1
+            } while ($stopped.state -ne 'inactive' -and $clock.ElapsedMilliseconds -lt 4500)
+            Assert-Probe ($stopped.state -eq 'inactive') "Scope $scope did not exit."
+            Write-Host "PASS global shortcut for scope $scope, foreground preservation and exit"
+        }
+    }
+    finally { Stop-TrayTestWorker $tray.Id }
+}
+
+function Stop-TrayTestWorker([int]$TrayId) {
+    foreach ($child in Get-CimInstance Win32_Process -Filter "ParentProcessId=$TrayId") {
+        $hwnd = [MaskProbe]::FindVisibleWindow($child.ProcessId, 'Privacy Mask PoC')
+        if ($hwnd -ne [IntPtr]::Zero) {
+            $null = [MaskProbe]::PostMessage($hwnd, 0x7E, [UIntPtr]::Zero, [IntPtr]::Zero)
+        }
+    }
 }
 
 function Test-Settings {
@@ -346,12 +518,12 @@ function Test-Settings {
         } while ($prompt -eq [IntPtr]::Zero -and $wait.ElapsedMilliseconds -lt 3000)
         Assert-Probe ($prompt -ne [IntPtr]::Zero -and [MaskProbe]::IsWindowVisible($prompt) -and
             (Invoke-MaskCommand Status).state -eq 'active') 'The protected hotkey did not open the prompt and keep the mask active.'
-        $wrong = $control.Invoke($null, @('Stop', 600, 'incorrect'))
+        $wrong = $control.Invoke($null, @('Stop', 600, 'incorrect', 0))
         $stateType = $wrong.GetType()
         $state = $stateType.GetField('State', $instance)
         $reason = $stateType.GetField('Reason', $instance)
         Assert-Probe ($reason.GetValue($wrong) -eq 'password-invalid' -and (Invoke-MaskCommand Status).state -eq 'active') 'Wrong password removed the mask.'
-        Assert-Probe ($state.GetValue($control.Invoke($null, @('Stop', 600, $secret))) -eq 'inactive') 'Correct password did not stop the mask.'
+        Assert-Probe ($state.GetValue($control.Invoke($null, @('Stop', 600, $secret, 0))) -eq 'inactive') 'Correct password did not stop the mask.'
         Write-Host 'PASS continuous default, protected hotkey prompt, password-required, wrong-password and correct-password behavior'
 
         $timed = Invoke-MaskCommand Start 3
@@ -364,12 +536,12 @@ function Test-Settings {
         $json = & (Join-Path $PSScriptRoot 'Invoke-PrivacyMask.ps1') Start -UntilUnlocked -Exe $Exe
         $continuous = $json | ConvertFrom-Json
         Assert-Probe ($LASTEXITCODE -eq 0 -and $continuous.passwordProtected -and $null -eq $continuous.expiresAt) 'Explicit continuous start did not override the timed default.'
-        Assert-Probe ($state.GetValue($control.Invoke($null, @('Stop', 600, $secret))) -eq 'inactive') 'Could not stop explicitly continuous session.'
+        Assert-Probe ($state.GetValue($control.Invoke($null, @('Stop', 600, $secret, 0))) -eq 'inactive') 'Could not stop explicitly continuous session.'
         Write-Host 'PASS Agent-supplied UntilUnlocked overrides the timed default'
     }
     finally {
         if ($settingsCreated) {
-            $null = $control.Invoke($null, @('Stop', 600, $secret))
+            $null = $control.Invoke($null, @('Stop', 600, $secret, 0))
             $null = $changePassword.Invoke($null, @($secret, '', $false, $true))
         }
         $appearance.Dispose()
@@ -452,6 +624,13 @@ Assert-Probe ($previousDpi -ne [IntPtr]::Zero) 'Could not set per-monitor DPI aw
 $originalCursor = $null
 try {
     Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    if ($TrayRegression) {
+        Test-Tray
+        return
+    }
+    if ($DisplayRegression) {
+        Assert-Probe ((Invoke-MaskCommand Status).state -eq 'inactive') 'Stop any active mask before running the display regression.'
+    }
     $originalCursor = [Windows.Forms.Cursor]::Position
     $screens = @([Windows.Forms.Screen]::AllScreens | Sort-Object -Property Primary -Descending)
     foreach ($screen in $screens) {
@@ -491,6 +670,10 @@ try {
     foreach ($fixture in $fixtures) { $fixture.Form.TopMost = $false }
     Wait-Ui 150
     Assert-Capture 'baseline-normal' $false
+    if ($DisplayRegression) {
+        Test-DisplayScope
+        return
+    }
 
     $control = Start-Mask @('--seconds', '3', '--capture-control')
     $null = Wait-Ready $control '0x00'

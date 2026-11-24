@@ -114,3 +114,29 @@ PASS native UI check of the English default and switching Settings and the main 
 PASS isolated WinForms checks for restoring the selected language in a fresh panel, switching back to English, an invalid preference falling back to English, and preserving the saved appearance and password files byte for byte.
 PASS Test-PrivacyMask.ps1 -IncludeControl -IncludeSettings with the English default and with Chinese selected in isolated profiles. The password prompt was found under the expected language and dual-monitor capture and input checks passed.
 PASS packaged executable hash and Status. Current user preferences were not used by the language-switch tests.
+
+2026-11-23 (Asia/Shanghai), selected display coverage on Windows 10.0.26300.10075
+Preview SHA-256: 3791232D8BFEDDF8850E15030DD6489C2F4ABB4C2EFC4DF14E94FD3ECA8732AF
+PASS Test-PrivacyMask.ps1 -DisplayRegression on DISPLAY1 1920x1200 at (0,0) and DISPLAY2 1920x1080 at (1920,-733), using the current saved image and password settings without changing them.
+PASS exact secondary bounds and focus preservation at launch. GDI capture control returned #FF00FF on DISPLAY1 and the saved mask image pixel #1E5C7F on DISPLAY2. Capture exclusion restored fixture colors #FF00FF and #00FF00 while the scoped mask was active. Clicks and typing reached both fixtures.
+PASS scoped Start and Status, idempotent same-scope Start, rejection of a conflicting scope and a missing display, password-required Stop, and teardown after a synthetic display change. All-displays mode still starts when no display is specified and ends on timeout.
+PASS English and Simplified Chinese WinForms display picker, selection preserved across language changes, panel Start, active scope label and timed return to the inactive panel.
+PASS Test-PrivacyMask.ps1 -CoverRegression. The full-screen mask covered a promoted test window and kept the password prompt above the mask.
+PASS compatibility between preview versions. The old controller reported a new scoped worker as unverified. The new controller recognized the old worker as an all-displays session.
+Pending: independent physical-screen observation and end-to-end native Computer Use or Dots verification of the selected-display mode.
+
+2026-11-24 (Asia/Shanghai), Windows tray and configurable display shortcuts
+Preview SHA-256: 607D855833FF5F90E68991A4178E2EA8C9C3643B52BF31ED3993F255BBFD68F9
+PASS Test-PrivacyMask.ps1 -TrayRegression on the current two-monitor console. Hidden startup, reopening the existing panel, and closing it to the tray worked. The three default shortcuts started the expected scope, preserved foreground focus, and retained the protected unlock workflow.
+PASS Test-PrivacyMask.ps1 -DisplayRegression and -CoverRegression with saved settings. The checks included exact secondary bounds, capture and input, missing display feedback, and unlock dialog window order.
+PASS isolated settings checks for invalid, duplicate, and occupied shortcuts, rollback of partial registrations, disabled and swapped bindings, saving, and reloading custom shortcuts. The restarted tray started all three scopes with the saved bindings. Controller, appearance, and password regressions passed in the isolated profile.
+PASS packaged preview hash and inactive Status after starting the tray in the current session. Current user preferences were left in place.
+Pending for this build: independent physical observation and native Computer Use or Dots acceptance.
+
+2026-11-24 (Asia/Shanghai), silent Windows sign-in launch, application icon and panel redesign
+Preview SHA-256: 8E1B533242D699077DB7ACE9CA30CE3029BF20093499EA47DAF33C8AB18D062F
+PASS English and Simplified Chinese renders of the panel, settings, and shortcut editor. The final renders show the embedded application icon and all of the unlock shortcut text.
+PASS Settings checkbox enabled and disabled the current-user Windows Run entry with a quoted test path containing spaces. The option reads back its saved state.
+PASS final candidate -TrayRegression, -DisplayRegression, and -CoverRegression with current display and password settings. Tests passed for all three shortcuts, dual-monitor capture and input, and password prompt ordering.
+PASS packaged EXE hash, startup registration pointing to the packaged EXE, and invocation of the stored startup command. The tray was running with three hotkeys registered, no panel, and an inactive mask.
+Pending: Windows sign-out/sign-in or reboot, and independent physical or remote client observation.

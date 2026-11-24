@@ -43,7 +43,6 @@ internal static class PrivacyMask
     private const uint DwmCloaked = 14;
     private const int HotKeyId = 1;
     private const int GwlExStyle = -20;
-    private const uint ModAlt = 1, ModControl = 2, ModShift = 4, ModNoRepeat = 0x4000;
     private const uint VkEscape = 0x1B;
     private const int MaNoActivate = 3, BlackBrush = 4;
     private const int SmXVirtualScreen = 76, SmYVirtualScreen = 77;
@@ -56,6 +55,7 @@ internal static class PrivacyMask
     private static DateTimeOffset? expiresAt;
     private static Stopwatch elapsed;
     private static int durationSeconds;
+    private static int displayNumber;
     private static uint affinity;
     private static bool ending;
     private static MaskAppearance appearance;
@@ -72,13 +72,14 @@ internal static class PrivacyMask
             return MaskControl.RunCommand(args);
 
         bool background = args.Length > 0 && args[0] == "--worker";
+        bool trayOnly = args.Length == 1 && args[0] == MaskStartup.TrayArgument;
         string logPath = null;
         try
         {
-            if (args.Length == 0)
+            if (args.Length == 0 || trayOnly)
             {
                 Require(SetProcessDpiAwarenessContext(new IntPtr(-4)), "SetProcessDpiAwarenessContext");
-                MaskPanel.Open();
+                MaskTray.Run(showPanel: args.Length == 0);
                 return 0;
             }
 
@@ -121,7 +122,7 @@ internal static class PrivacyMask
         }
         catch (Exception ex)
         {
-            if (!background)
+            if (!background && !trayOnly)
             {
                 MaskLanguage language = MaskLanguage.Load();
                 MessageBox(IntPtr.Zero, ex.Message + "\n\n" + language.Text("Log: ", "日志：") +
@@ -133,6 +134,7 @@ internal static class PrivacyMask
 
     private static void Run(string[] args, int firstArgument)
     {
+        const string usage = "Usage: PrivacyMask.exe [--seconds 1..3600 [--capture-control] | --until-unlocked] [--display number]";
         int seconds = 0;
         bool captureControl = false;
         bool continuous = false;
@@ -152,10 +154,13 @@ internal static class PrivacyMask
                 continuous = true;
                 continue;
             }
-            throw new ArgumentException("Usage: PrivacyMask.exe [--seconds 1..3600 [--capture-control] | --until-unlocked]");
+            if (args[i] == "--display" && displayNumber == 0 && i + 1 < args.Length &&
+                int.TryParse(args[++i], NumberStyles.None, CultureInfo.InvariantCulture, out displayNumber) && displayNumber > 0)
+                continue;
+            throw new ArgumentException(usage);
         }
         if (continuous ? seconds != 0 || captureControl : seconds == 0)
-            throw new ArgumentException("Usage: PrivacyMask.exe [--seconds 1..3600 [--capture-control] | --until-unlocked]");
+            throw new ArgumentException(usage);
         password = MaskPassword.Load();
         if (continuous && password == null)
             throw new InvalidOperationException("password-not-set");
@@ -163,19 +168,19 @@ internal static class PrivacyMask
         var version = new OsVersion { Size = (uint)Marshal.SizeOf(typeof(OsVersion)) };
         if (RtlGetVersion(ref version) != 0 || version.Major < 10 || version.Build < 19041)
             throw new InvalidOperationException("Windows 10 version 2004 (build 19041) or later is required.");
-        Log(string.Format("START Windows {0}.{1}.{2}; timeoutSeconds={3}; captureControl={4}",
-            version.Major, version.Minor, version.Build, seconds, captureControl));
+        Log(string.Format("START Windows {0}.{1}.{2}; timeoutSeconds={3}; captureControl={4}; display={5}",
+            version.Major, version.Minor, version.Build, seconds, captureControl, displayNumber));
         Require(SetProcessDpiAwarenessContext(new IntPtr(-4)), "SetProcessDpiAwarenessContext");
         if (!MaskControl.IsInteractiveConsole())
             throw new InvalidOperationException("desktop-unavailable: an unlocked physical Windows console is required.");
 
-        int x = GetSystemMetrics(SmXVirtualScreen);
-        int y = GetSystemMetrics(SmYVirtualScreen);
-        int width = GetSystemMetrics(SmCxVirtualScreen);
-        int height = GetSystemMetrics(SmCyVirtualScreen);
-        if (width <= 0 || height <= 0)
-            throw new InvalidOperationException("No virtual desktop is available.");
         Screen[] screens = Screen.AllScreens;
+        Rectangle area = GetMaskBounds(screens);
+        if (area.Width <= 0 || area.Height <= 0)
+            throw new InvalidOperationException(displayNumber == 0 ? "No virtual desktop is available." : "display-unavailable");
+        int x = area.X, y = area.Y, width = area.Width, height = area.Height;
+        if (displayNumber != 0)
+            screens = Array.FindAll(screens, screen => GetDisplayNumber(screen) == displayNumber);
         displays = new Rectangle[screens.Length];
         for (int i = 0; i < screens.Length; i++)
         {
@@ -222,7 +227,8 @@ internal static class PrivacyMask
                 throw new InvalidOperationException(string.Format("Display affinity 0x{0:X} did not match 0x{1:X}.", actual, requested));
             affinity = actual;
 
-            hotKeyRegistered = RegisterHotKey(IntPtr.Zero, HotKeyId, ModAlt | ModControl | ModShift | ModNoRepeat, VkEscape);
+            hotKeyRegistered = MaskHotkeys.RegisterHotKey(IntPtr.Zero, HotKeyId,
+                MaskHotkeys.ModAlt | MaskHotkeys.ModControl | MaskHotkeys.ModShift | MaskHotkeys.ModNoRepeat, VkEscape);
             Require(hotKeyRegistered, "RegisterHotKey (Ctrl+Alt+Shift+Esc)");
             sessionRegistered = WTSRegisterSessionNotification(hwnd, 0);
             Require(sessionRegistered, "WTSRegisterSessionNotification");
@@ -282,7 +288,7 @@ internal static class PrivacyMask
             if (IsWindow(hwnd))
                 DestroyWindow(hwnd);
             if (hotKeyRegistered)
-                UnregisterHotKey(IntPtr.Zero, HotKeyId);
+                MaskHotkeys.UnregisterHotKey(IntPtr.Zero, HotKeyId);
         }
         Log("EXIT reason=" + exitReason);
     }
@@ -443,7 +449,7 @@ internal static class PrivacyMask
             return MaskStatus.Unavailable("overlay-unverified");
         if (requested == WdaNone)
             return MaskStatus.Unavailable("capture-control");
-        return new MaskStatus("active", expiresAt, null, password != null);
+        return new MaskStatus("active", expiresAt, null, password != null, displayNumber);
     }
 
     private static bool HasExpired()
@@ -460,9 +466,27 @@ internal static class PrivacyMask
             !GetWindowDisplayAffinity(hwnd, out actual) || actual != affinity || !GetWindowRect(hwnd, out rect))
             return false;
 
-        int x = GetSystemMetrics(SmXVirtualScreen), y = GetSystemMetrics(SmYVirtualScreen);
-        return rect.Left == x && rect.Top == y && rect.Right == x + GetSystemMetrics(SmCxVirtualScreen) &&
-            rect.Bottom == y + GetSystemMetrics(SmCyVirtualScreen);
+        Rectangle area = GetMaskBounds(displayNumber == 0 ? null : Screen.AllScreens);
+        return area.Width > 0 && area.Height > 0 && rect.Left == area.Left && rect.Top == area.Top &&
+            rect.Right == area.Right && rect.Bottom == area.Bottom;
+    }
+
+    internal static int GetDisplayNumber(Screen screen)
+    {
+        const string prefix = @"\\.\DISPLAY";
+        int number;
+        return screen.DeviceName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(screen.DeviceName.Substring(prefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out number) &&
+            number > 0 ? number : 0;
+    }
+
+    private static Rectangle GetMaskBounds(Screen[] screens)
+    {
+        if (displayNumber == 0)
+            return new Rectangle(GetSystemMetrics(SmXVirtualScreen), GetSystemMetrics(SmYVirtualScreen),
+                GetSystemMetrics(SmCxVirtualScreen), GetSystemMetrics(SmCyVirtualScreen));
+        Screen selected = Array.Find(screens, screen => GetDisplayNumber(screen) == displayNumber);
+        return selected == null ? Rectangle.Empty : selected.Bounds;
     }
 
     private static bool RestoreCoverOrder(IntPtr hwnd)
@@ -588,8 +612,6 @@ internal static class PrivacyMask
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint colorKey, byte alpha, uint flags);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool GetWindowDisplayAffinity(IntPtr hwnd, out uint affinity);
-    [DllImport("user32.dll", SetLastError = true)] private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint key);
-    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
     [DllImport("user32.dll", SetLastError = true)] private static extern UIntPtr SetTimer(IntPtr hwnd, UIntPtr id, uint milliseconds, IntPtr callback);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool UpdateWindow(IntPtr hwnd);

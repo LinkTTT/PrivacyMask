@@ -10,6 +10,8 @@
 | --- | --- |
 | [PrivacyMask.cs](PrivacyMask.cs) | Win32 遮罩、置顶、截图排除与退出 |
 | [MaskPanel.cs](MaskPanel.cs) · [MaskControl.cs](MaskControl.cs) | 图形面板、会话控制和状态查询 |
+| [MaskTray.cs](MaskTray.cs) · [MaskHotkeys.cs](MaskHotkeys.cs) | 托盘驻留和全局快捷键 |
+| [PrivacyMask.ico](PrivacyMask.ico) | EXE、窗口和托盘图标 |
 | [MaskSettings.cs](MaskSettings.cs) | 外观、密码和默认结束方式设置 |
 | [preview/PrivacyMask.exe](preview/PrivacyMask.exe) | 可直接运行的 Windows 预览版，配套命令脚本位于同一目录 |
 | [Invoke-PrivacyMask.ps1](Invoke-PrivacyMask.ps1) | 在目标 Windows 上启动、查询或停止遮罩 |
@@ -19,7 +21,20 @@
 
 ## 运行和退出
 
-在目标 Windows 10 2004（内部版本 19041）或更新版本的**当前解锁物理桌面**使用。双击预览版 EXE，默认显示英文。打开 **Settings → Language**，选择 **简体中文** 即可切换，程序会记住语言。选择结束方式，点击「开始遮罩」并确认显示「遮罩已开启」。可以关闭面板后继续操作，再打开同一个 EXE 停止遮罩。程序使用系统自带的 .NET Framework，无需安装或管理员权限。
+在目标 Windows 10 2004（内部版本 19041）或更新版本的**当前解锁物理桌面**使用。双击预览版 EXE，默认显示英文。打开 **Settings → Language**，选择 **简体中文** 即可切换，程序会记住语言。选择「所有显示器」或一块显示器，并选择结束方式。点击「开始遮罩」，确认「遮罩已开启」和当前范围后再打开目标应用。只遮副屏时，在 Windows 中使用「扩展」显示模式，将目标应用放在副屏。关闭面板后程序留在系统托盘。程序使用系统自带的 .NET Framework，无需安装或管理员权限。
+
+### 托盘和全局快捷键
+
+| 遮罩范围 | 默认快捷键 |
+| --- | --- |
+| 所有显示器 | `Ctrl+Alt+Shift+0` |
+| 仅显示器 1 | `Ctrl+Alt+Shift+1` |
+| 仅显示器 2 | `Ctrl+Alt+Shift+2` |
+
+- 在面板点击「快捷键…」，或右键托盘图标选择「全局快捷键…」。三个快捷键都可单独修改或禁用，保存后立即生效。主键可选字母、数字行或 F1–F11，并至少搭配 Ctrl、Alt、Win 中的一个。
+- 快捷键沿用已保存的外观和结束方式。显示器编号以面板为准。对应显示器未连接时会提示，遮罩保持关闭。已有遮罩时，先结束当前会话再开启不同范围。
+- 双击托盘图标可以打开面板，右键可以启动、解除遮罩或退出托盘。图标可能在任务栏的隐藏图标区域。用 `PrivacyMask.exe --tray` 可以直接在托盘启动。退出托盘后启动快捷键停用，已经开启的遮罩仍可按 `Ctrl+Alt+Shift+Esc` 解除。
+- 打开「设置」并勾选「随当前用户登录 Windows 启动」，以后登录 Windows 时就会静默进入托盘。勾选后即时保存。如果移动了 EXE，请从新位置打开程序并勾选，以更新启动路径。
 
 ### 外观和密码
 
@@ -34,15 +49,17 @@
 
 ```powershell
 powershell.exe -NoProfile -File .\preview\Invoke-PrivacyMask.ps1 Start -Seconds 600
+# 如果只遮 PrivacyMask 面板里的显示器 2，使用下面这条命令
+powershell.exe -NoProfile -File .\preview\Invoke-PrivacyMask.ps1 Start -Seconds 600 -Display 2
 # 已设置密码时，可按用户指示选择持续遮罩
 powershell.exe -NoProfile -File .\preview\Invoke-PrivacyMask.ps1 Start -UntilUnlocked
 powershell.exe -NoProfile -File .\preview\Invoke-PrivacyMask.ps1 Status
 powershell.exe -NoProfile -File .\preview\Invoke-PrivacyMask.ps1 Stop
 ```
 
-- `Start` 可按任务选择 `-Seconds` 或 `-UntilUnlocked`。省略两者使用用户保存的默认结束方式。重复 `Start` 返回当前会话，保持原结束方式。
+- `Start` 可按任务选择 `-Seconds` 或 `-UntilUnlocked`。省略两者使用用户保存的默认结束方式。省略 `-Display` 会遮住所有显示器。单屏编号以 PrivacyMask 面板为准，可能与 Windows 显示设置的编号不同。同范围的重复 `Start` 保持原会话及到期时间。已有会话的范围不同时返回 `mask-scope-mismatch`，所选显示器未连接时返回 `display-unavailable`。
 - 每条命令返回一行 JSON。`state` 为 `active`、`inactive` 或 `unavailable`。计时会话的 `expiresAt` 为 UTC 到期时间，持续会话为 `null`。`passwordProtected` 表示是否需要密码。受保护时，脚本 `Stop` 返回 `password-required`，由用户在面板或快捷键弹窗输入密码。状态无法确认时返回退出码 `1`，`reason` 给出原因。
-- 自动化应等到 `active` 或面板显示「遮罩已开启」才打开目标应用。遇到 `inactive`、`unavailable`、截图变黑或连接中断时，停下并报告状态。恢复连接后先重新确认遮罩。
+- `active` 响应中的 `display` 是当前遮住的显示器编号，`null` 表示覆盖所有显示器。自动化应等到 `active` 并确认范围符合任务后才打开目标应用。遇到 `inactive`、`unavailable`、截图变黑或连接中断时，停下并报告状态。恢复连接后先重新确认遮罩。
 - 退出键冲突时遮罩不会显示。手机或 Agent 断线时，计时会话仍会到时结束，持续会话仍可在 Windows 上用密码解除。
 - 旧测试可继续用 `Start-Process .\preview\PrivacyMask.exe -ArgumentList '--seconds','20'` 直接启动。仅测试时可加 `--capture-control`，此时 `0x00` 让遮罩进入支持采集分层窗口的截图，`Status` 返回 `unavailable` 和 `capture-control`。
 - 日志位于 `%LOCALAPPDATA%\PrivacyMaskPoC\PrivacyMask-<PID>.log`，只记录系统版本、窗口坐标、截图排除值、启动错误和退出原因。命令与面板通过仅允许当前本机用户连接的命名管道通信。
@@ -53,7 +70,7 @@ powershell.exe -NoProfile -File .\preview\Invoke-PrivacyMask.ps1 Stop
 
 遮罩是 `WS_EX_LAYERED | WS_EX_TRANSPARENT` 的分层窗口。这个组合让鼠标事件由下方窗口处理。程序用 `WS_EX_NOACTIVATE` 和 `SWP_NOACTIVATE` 保持原有前台窗口，创建时设置 `WS_EX_TOPMOST`。前台窗口变化时会检查实际窗口顺序，也会定期复查应用在切换标签页后重新置顶的情况。遮罩回到其他应用窗口上方时，保留「解除遮罩」窗口在自己的上方。系统界面、通知和鼠标指针仍可能显示。 [Microsoft Learn：分层窗口](https://learn.microsoft.com/en-us/windows/win32/winmsg/window-features#layered-windows) · [SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos)
 
-原型只提供视觉遮挡。Windows 仍然解锁，现场人员仍可操作，程序退出或系统切换安全桌面时也会离开遮罩覆盖范围。截图排除的效果取决于采集路径。OpenAI 的公开说明要求 Windows Computer Use 使用活动且解锁的桌面。[ChatGPT Learn：Computer Use](https://learn.chatgpt.com/docs/computer-use#windows-foreground-use)
+原型只提供视觉遮挡。Windows 仍然解锁，现场人员仍可操作，程序退出或系统切换安全桌面时也会离开遮罩覆盖范围。截图排除的效果取决于采集路径。只遮副屏时，主屏保持可见，Windows 原生 Computer Use 仍会使用同一会话的前台键鼠。[ChatGPT Learn：Computer Use](https://learn.chatgpt.com/docs/computer-use#windows-foreground-use)
 
 ## 本机验证结果
 
@@ -86,9 +103,15 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-PrivacyMask.
 
 可单独使用 `-CoverRegression`，复测 `Ctrl+Tab` 导致测试窗口重新置顶的情况。当前账户已开启密码时，这个用例也会检查解除弹窗，等遮罩计时结束，无需输入或修改现有密码。
 
+可在扩展双屏下单独运行 `-DisplayRegression`，复测副屏范围、截图排除、键鼠通行和命令反馈。测试沿用当前外观和密码设置。
+
+关闭已运行的托盘并启用三个快捷键后，可单独运行 `-TrayRegression`，验证重开面板、关闭面板后驻留、全局快捷键和解除快捷键。连接显示器 1 和 2 可覆盖全部三种范围。
+
 构建脚本用 Windows 自带的 .NET Framework C# 编译器生成单个 AnyCPU EXE，无 NuGet 依赖。`-OutputPath` 将构建产物写到指定位置，省略该参数时会生成项目根目录下的 `PrivacyMask.exe`。预览版的校验值见 [验证记录](Validation.txt)。
 
 ## 后续开发
+
+- 探索独立的 Agent 工具，提供指定窗口截图和定向输入。先验证独立浏览器窗口和少量常用桌面控件。验收时人持续在主屏 IDE 打字，Agent 同时在副屏完成真实流程，双方的焦点、指针和输入互不干扰。此方案由 Agent 主动调用专用工具，原生 Windows Computer Use 仍走前台输入。
 
 外观绘制在同一个遮罩窗口上，截图排除设置适用于整个窗口。后续修改外观时，仍需确认原生 Computer Use 截图和输入正常，以及各显示器的实际遮挡效果。
 

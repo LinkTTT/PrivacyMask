@@ -16,50 +16,100 @@ internal sealed class MaskSettings : Form
 
     private MaskSettings(MaskAppearance appearance, bool recovered, MaskLanguage language, Action<MaskLanguage> onLanguageChanged)
     {
+        MaskUi.StyleWindow(this);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(500, 485);
-        Font = SystemFonts.MessageBoxFont;
-        AutoScaleMode = AutoScaleMode.Font;
+        ClientSize = new Size(604, 521);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 1, RowCount = 8 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(22, 16, 22, 13), ColumnCount = 1, RowCount = 5 };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 218));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 43));
+        var title = MaskUi.Title();
+        title.Margin = new Padding(0, 0, 0, 7);
+        layout.Controls.Add(title, 0, 0);
 
-        var languageRow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
-        var languageLabel = new Label { AutoSize = true, Margin = new Padding(3, 6, 8, 0) };
+        var appearanceCard = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = MaskUi.Surface, ColumnCount = 2,
+            RowCount = 3, Padding = new Padding(14), Margin = new Padding(0, 0, 0, 12) };
+        appearanceCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 53));
+        appearanceCard.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 47));
+        appearanceCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        appearanceCard.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        appearanceCard.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var previewLabel = MaskUi.Caption();
+        var modeLabel = MaskUi.Caption();
+        previewLabel.Font = modeLabel.Font = MaskUi.Subheading;
+        appearanceCard.Controls.Add(previewLabel, 0, 0);
+        appearanceCard.Controls.Add(modeLabel, 1, 0);
+        var preview = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black, Margin = new Padding(0, 0, 15, 0) };
+        preview.Paint += (sender, args) => appearance.Draw(args.Graphics, preview.ClientRectangle);
+        appearanceCard.Controls.Add(preview, 0, 1);
+        appearanceCard.SetRowSpan(preview, 2);
+
+        var mode = new ComboBox { Dock = DockStyle.Top, Margin = Padding.Empty };
+        MaskUi.StyleSelector(mode);
+        appearanceCard.Controls.Add(mode, 1, 1);
+        var picture = new Button { AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Left, Margin = Padding.Empty };
+        MaskUi.StyleButton(picture);
+        var text = new TextBox { Multiline = true, AcceptsReturn = true, Dock = DockStyle.Fill, MaxLength = MaskAppearance.TextLimit,
+            Text = appearance.Text, Margin = Padding.Empty };
+        var modeOptions = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0, 5, 0, 0) };
+        modeOptions.Controls.Add(picture);
+        modeOptions.Controls.Add(text);
+        appearanceCard.Controls.Add(modeOptions, 1, 2);
+        layout.Controls.Add(appearanceCard, 0, 1);
+
+        var preferences = new TableLayoutPanel { Dock = DockStyle.Fill, BackColor = MaskUi.Surface, ColumnCount = 1,
+            RowCount = 4, Padding = new Padding(14, 8, 14, 8), Margin = new Padding(0, 0, 0, 9) };
+        preferences.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        preferences.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        preferences.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+        preferences.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        preferences.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var languageRow = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
+        var languageLabel = new Label { AutoSize = true, Font = MaskUi.Subheading, Margin = new Padding(0, 5, 13, 0) };
         var englishOption = new RadioButton { Text = "English", AutoSize = true, Checked = !language.IsChinese };
         var chineseOption = new RadioButton { Text = "简体中文", AutoSize = true, Checked = language.IsChinese };
         languageRow.Controls.AddRange(new Control[] { languageLabel, englishOption, chineseOption });
-        layout.Controls.Add(languageRow, 0, 0);
+        preferences.Controls.Add(languageRow, 0, 0);
 
-        var mode = new ComboBox { Width = 154, DropDownStyle = ComboBoxStyle.DropDownList };
-        layout.Controls.Add(mode, 0, 1);
+        bool startupEnabled;
+        bool startupReadable = MaskStartup.TryRead(out startupEnabled);
+        bool startupFailed = !startupReadable;
+        var startup = new CheckBox { AutoCheck = false, Checked = startupEnabled, Enabled = startupReadable,
+            AutoSize = true, Anchor = AnchorStyles.Left, Margin = Padding.Empty };
+        var startupDetail = MaskUi.Caption();
+        startupDetail.Margin = new Padding(18, 0, 0, 0);
+        preferences.Controls.Add(startup, 0, 1);
+        preferences.Controls.Add(startupDetail, 0, 2);
+        Action describeStartup = () =>
+        {
+            startupDetail.ForeColor = startupFailed ? MaskUi.WarningInk : MaskUi.Muted;
+            startupDetail.Text = startupFailed ? language.Text("Could not access the Windows startup setting.", "无法访问 Windows 自启动设置。") :
+                language.Text("Starts in the tray without opening a window. Saves immediately.", "静默启动到托盘，设置即时保存。");
+        };
+        startup.Click += (sender, args) =>
+        {
+            bool enable = !startup.Checked;
+            startupFailed = !MaskStartup.TrySet(enable);
+            if (!startupFailed)
+                startup.Checked = enable;
+            describeStartup();
+        };
 
-        var preview = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black };
-        preview.Paint += (sender, args) => appearance.Draw(args.Graphics, preview.ClientRectangle);
-        layout.Controls.Add(preview, 0, 2);
-
-        var picture = new Button { AutoSize = true };
-        layout.Controls.Add(picture, 0, 3);
-        var text = new TextBox { Multiline = true, AcceptsReturn = true, Dock = DockStyle.Fill, MaxLength = MaskAppearance.TextLimit,
-            Text = appearance.Text };
-        layout.Controls.Add(text, 0, 4);
-
-        var password = new Button { AutoSize = true };
+        var password = new Button { AutoSize = true, Anchor = AnchorStyles.Top | AnchorStyles.Left, Margin = Padding.Empty };
+        MaskUi.StyleButton(password);
         password.Click += (sender, args) => PasswordDialog.OpenSettings(this, language);
-        layout.Controls.Add(password, 0, 5);
+        preferences.Controls.Add(password, 0, 3);
+        layout.Controls.Add(preferences, 0, 2);
 
-        var hint = new Label { Dock = DockStyle.Fill };
-        layout.Controls.Add(hint, 0, 6);
+        var hint = MaskUi.Caption();
+        layout.Controls.Add(hint, 0, 3);
         string hintEnglish = recovered ? "Could not read the saved appearance. The mask will use black." : "Appearance changes apply the next time you start the mask.";
         string hintChinese = recovered ? "原外观设置无法读取，当前使用纯黑。" : "外观将在下次开启时生效。";
         Action<string, string> showHint = (english, chinese) =>
@@ -72,8 +122,10 @@ internal sealed class MaskSettings : Form
         var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         var cancel = new Button { AutoSize = true, DialogResult = DialogResult.Cancel };
         var save = new Button { AutoSize = true };
+        MaskUi.StyleButton(cancel);
+        MaskUi.StyleButton(save, primary: true);
         buttons.Controls.AddRange(new Control[] { save, cancel });
-        layout.Controls.Add(buttons, 0, 7);
+        layout.Controls.Add(buttons, 0, 4);
         CancelButton = cancel;
         Controls.Add(layout);
 
@@ -82,15 +134,19 @@ internal sealed class MaskSettings : Form
             if (mode.SelectedIndex < 0)
                 return;
             appearance.Mode = (MaskAppearanceMode)mode.SelectedIndex;
-            picture.Enabled = appearance.Mode == MaskAppearanceMode.Picture;
-            text.Enabled = appearance.Mode == MaskAppearanceMode.Text;
+            picture.Visible = appearance.Mode == MaskAppearanceMode.Picture;
+            text.Visible = appearance.Mode == MaskAppearanceMode.Text;
             preview.Invalidate();
         };
         Action applyLanguage = () =>
         {
             Text = language.Text("Mask Settings", "遮罩设置");
+            title.Text = language.Text("Settings", "设置");
             languageLabel.Text = language.Text("Language", "语言");
-            mode.AccessibleName = language.Text("Mask appearance", "遮罩外观");
+            startup.Text = language.Text("Start when I sign in to Windows", "随当前用户登录 Windows 启动");
+            describeStartup();
+            previewLabel.Text = language.Text("Preview", "预览");
+            mode.AccessibleName = modeLabel.Text = language.Text("Mask appearance", "遮罩外观");
             mode.BeginUpdate();
             mode.Items.Clear();
             mode.Items.AddRange(new object[] { language.Text("Black", "纯黑"), language.Text("Custom Image", "自定义图片"),
@@ -179,6 +235,7 @@ internal sealed class PasswordDialog : Form
 
     private PasswordDialog(string title, bool topmost)
     {
+        MaskUi.StyleWindow(this);
         Text = title;
         StartPosition = topmost ? FormStartPosition.CenterScreen : FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -187,16 +244,14 @@ internal sealed class PasswordDialog : Form
         TopMost = topmost;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        AutoScaleMode = AutoScaleMode.Font;
-        Font = SystemFonts.MessageBoxFont;
         fields = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false,
-            Padding = new Padding(16), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill };
+            Padding = new Padding(19), AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Fill };
         Controls.Add(fields);
     }
 
     private TextBox AddPassword(string label)
     {
-        fields.Controls.Add(new Label { Text = label, AutoSize = true });
+        fields.Controls.Add(new Label { Text = label, AutoSize = true, Font = MaskUi.Subheading, Margin = new Padding(3, 7, 3, 2) });
         var input = new TextBox { UseSystemPasswordChar = true, MaxLength = MaskPassword.LengthLimit, Width = 276, AccessibleName = label };
         fields.Controls.Add(input);
         return input;
@@ -206,7 +261,9 @@ internal sealed class PasswordDialog : Form
     {
         var ok = new Button { Text = submit, AutoSize = true };
         var cancel = new Button { Text = language.Text("Cancel", "取消"), DialogResult = DialogResult.Cancel, AutoSize = true };
-        buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false };
+        MaskUi.StyleButton(ok, primary: true);
+        MaskUi.StyleButton(cancel);
+        buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 8, 0, 0) };
         buttons.Controls.AddRange(new Control[] { ok, cancel });
         fields.Controls.Add(buttons);
         AcceptButton = ok;
@@ -328,6 +385,7 @@ internal sealed class PasswordDialog : Form
             if (existing != null)
             {
                 var disable = new Button { Text = language.Text("Disable Password Protection", "关闭密码保护"), AutoSize = true };
+                MaskUi.StyleButton(disable);
                 disable.Click += apply;
                 buttons.Controls.Add(disable);
             }

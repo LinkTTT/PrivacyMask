@@ -20,13 +20,15 @@ internal sealed class MaskStatus
     internal readonly DateTimeOffset? ExpiresAt;
     internal readonly string Reason;
     internal readonly bool PasswordProtected;
+    internal readonly int DisplayNumber;
 
-    internal MaskStatus(string state, DateTimeOffset? expiresAt, string reason, bool passwordProtected = false)
+    internal MaskStatus(string state, DateTimeOffset? expiresAt, string reason, bool passwordProtected = false, int displayNumber = 0)
     {
         State = state;
         ExpiresAt = expiresAt;
         Reason = reason;
         PasswordProtected = passwordProtected;
+        DisplayNumber = displayNumber;
     }
 
     internal static MaskStatus Unavailable(string reason, bool passwordProtected = false)
@@ -44,36 +46,42 @@ internal static class MaskControl
     private const int RequestTimeoutMs = 650;
     private const byte ActiveReply = 1, TestReply = 2, UnverifiedReply = 3;
     private const byte ProtectedReply = 4, PasswordRequiredReply = 5, PasswordInvalidReply = 6, StoppingReply = 7;
+    private const byte DisplayActiveReply = 8, DisplayProtectedReply = 9;
     private const uint PipeAccessDuplex = 3, FileFlagOverlapped = 0x40000000, PipeRejectRemoteClients = 8;
     private const int DesktopReadObjects = 1, UserObjectName = 2;
     private static readonly SecurityIdentifier UserSid = CurrentUserSid();
     private static readonly int SessionId = GetSessionId();
     private static readonly string PipeName = "PrivacyMask-" + UserSid.Value + "-" + SessionId;
     private static readonly string MutexName = @"Local\" + PipeName;
+    internal static readonly string TrayName = PipeName + "-Tray";
     private static readonly MaskStatus Inactive = new MaskStatus("inactive", null, null);
 
     internal static int RunCommand(string[] args)
     {
         int seconds;
+        int displayNumber = 0;
         MaskStatus status;
-        if (args.Length != 3 || !int.TryParse(args[2], NumberStyles.None, CultureInfo.InvariantCulture, out seconds) ||
-            seconds < 0 || seconds > 3600)
+        if (args.Length < 3 || args.Length > 4 ||
+            !int.TryParse(args[2], NumberStyles.None, CultureInfo.InvariantCulture, out seconds) || seconds < 0 || seconds > 3600 ||
+            (args.Length == 4 && ((args[1] != "Start" && args[1] != "Default") ||
+                !int.TryParse(args[3], NumberStyles.None, CultureInfo.InvariantCulture, out displayNumber) || displayNumber <= 0)))
             status = MaskStatus.Unavailable("invalid-arguments");
         else
-            status = Execute(args[1], seconds);
+            status = Execute(args[1], seconds, displayNumber: displayNumber);
 
         var json = new JavaScriptSerializer().Serialize(new
         {
             state = status.State,
             expiresAt = status.ExpiresAt.HasValue ? status.ExpiresAt.Value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture) : null,
             reason = status.Reason,
-            passwordProtected = status.PasswordProtected
+            passwordProtected = status.PasswordProtected,
+            display = status.DisplayNumber == 0 ? (int?)null : status.DisplayNumber
         });
         Console.Out.WriteLine(json);
         return status.State == "unavailable" ? 1 : 0;
     }
 
-    internal static MaskStatus Execute(string action, int seconds, string password = null)
+    internal static MaskStatus Execute(string action, int seconds, string password = null, int displayNumber = 0)
     {
         try
         {
@@ -82,10 +90,10 @@ internal static class MaskControl
 
             switch (action)
             {
-                case "Start": return Start(seconds);
+                case "Start": return Start(seconds, displayNumber);
                 case "Default":
                     var protection = MaskPassword.Load();
-                    return Start(protection != null && protection.DefaultContinuous ? 0 : DefaultSeconds);
+                    return Start(protection != null && protection.DefaultContinuous ? 0 : DefaultSeconds, displayNumber);
                 case "Stop": return Stop(password);
                 case "Status": return Query();
                 case "Prompt": return Query(UnlockPromptRequest);
@@ -98,16 +106,18 @@ internal static class MaskControl
         catch (InvalidDataException) { return MaskStatus.Unavailable("password-settings-invalid"); }
     }
 
-    private static MaskStatus Start(int seconds)
+    private static MaskStatus Start(int seconds, int displayNumber)
     {
         MaskStatus current = Query();
         if (current.Reason == "worker-unresponsive")
             current = WaitForWorker();
         if (current.State != "inactive")
-            return current;
+            return MatchScope(current, displayNumber);
 
         string arguments = seconds == 0 ? "--worker --until-unlocked" :
             "--worker --seconds " + seconds.ToString(CultureInfo.InvariantCulture);
+        if (displayNumber != 0)
+            arguments += " --display " + displayNumber.ToString(CultureInfo.InvariantCulture);
         using (var worker = Process.Start(new ProcessStartInfo(Assembly.GetExecutingAssembly().Location, arguments)
             { UseShellExecute = false, CreateNoWindow = true }))
         {
@@ -116,13 +126,13 @@ internal static class MaskControl
             {
                 current = Query();
                 if (current.State == "active")
-                    return current;
+                    return MatchScope(current, displayNumber);
                 if (worker.HasExited)
                 {
                     if (worker.ExitCode != 2)
                         return StartupError(worker.Id);
                     current = WaitForWorker();
-                    return current.State == "inactive" ? MaskStatus.Unavailable("startup-failed") : current;
+                    return current.State == "inactive" ? MaskStatus.Unavailable("startup-failed") : MatchScope(current, displayNumber);
                 }
                 Thread.Sleep(60);
             } while (wait.ElapsedMilliseconds < 4800);
@@ -132,6 +142,13 @@ internal static class MaskControl
             catch (InvalidOperationException) { }
             return MaskStatus.Unavailable("startup-timeout");
         }
+    }
+
+    private static MaskStatus MatchScope(MaskStatus current, int displayNumber)
+    {
+        if (current.State == "active" && current.DisplayNumber != displayNumber)
+            return new MaskStatus("unavailable", current.ExpiresAt, "mask-scope-mismatch", current.PasswordProtected, current.DisplayNumber);
+        return current;
     }
 
     private static MaskStatus StartupError(int pid)
@@ -146,6 +163,8 @@ internal static class MaskControl
                     return MaskStatus.Unavailable("hotkey-conflict");
                 if (line.Contains(" ERROR desktop-unavailable:"))
                     return MaskStatus.Unavailable("desktop-unavailable");
+                if (line.Contains(" ERROR display-unavailable"))
+                    return MaskStatus.Unavailable("display-unavailable");
                 if (line.Contains(" ERROR password-not-set"))
                     return MaskStatus.Unavailable("password-not-set");
                 if (line.Contains(" ERROR password-settings-invalid"))
@@ -226,12 +245,24 @@ internal static class MaskControl
                 var response = new byte[9];
                 if (!ReadExactly(pipe, response, request == StopRequest && password != null ? 4000 : RequestTimeoutMs))
                     return MaskStatus.Unavailable("worker-unresponsive");
+                int displayNumber = 0;
+                bool scoped = response[0] == DisplayActiveReply || response[0] == DisplayProtectedReply;
+                if (scoped)
+                {
+                    var display = new byte[4];
+                    if (!ReadExactly(pipe, display, RequestTimeoutMs))
+                        return MaskStatus.Unavailable("worker-unresponsive");
+                    displayNumber = BitConverter.ToInt32(display, 0);
+                    if (displayNumber <= 0)
+                        return MaskStatus.Unavailable("overlay-unverified");
+                }
                 pipe.WriteByte(Acknowledge);
-                if (response[0] == ActiveReply || response[0] == ProtectedReply)
+                if (scoped || response[0] == ActiveReply || response[0] == ProtectedReply)
                 {
                     long ticks = BitConverter.ToInt64(response, 1);
                     DateTimeOffset? deadline = ticks == 0 ? (DateTimeOffset?)null : new DateTimeOffset(ticks, TimeSpan.Zero);
-                    return new MaskStatus("active", deadline, null, response[0] == ProtectedReply);
+                    return new MaskStatus("active", deadline, null,
+                        response[0] == ProtectedReply || response[0] == DisplayProtectedReply, displayNumber);
                 }
                 if (response[0] == PasswordRequiredReply)
                     return MaskStatus.Unavailable("password-required", true);
@@ -248,11 +279,16 @@ internal static class MaskControl
 
     internal static Mutex OpenWorkerMutex()
     {
+        return OpenMutex(MutexName);
+    }
+
+    internal static Mutex OpenMutex(string name)
+    {
         var security = new MutexSecurity();
         security.SetAccessRuleProtection(true, false);
         security.AddAccessRule(new MutexAccessRule(UserSid, MutexRights.FullControl, AccessControlType.Allow));
         bool created;
-        return new Mutex(false, MutexName, out created, security);
+        return new Mutex(false, name, out created, security);
     }
 
     internal static bool TryAcquire(Mutex guard)
@@ -307,6 +343,13 @@ internal static class MaskControl
                         current.Reason == "capture-control" ? TestReply : UnverifiedReply;
                     if (current.ExpiresAt.HasValue)
                         BitConverter.GetBytes(current.ExpiresAt.Value.UtcTicks).CopyTo(response, 1);
+                    // Old controllers treat the new scoped reply codes as unverified.
+                    if (current.State == "active" && current.DisplayNumber != 0)
+                    {
+                        Array.Resize(ref response, 13);
+                        response[0] = current.PasswordProtected ? DisplayProtectedReply : DisplayActiveReply;
+                        BitConverter.GetBytes(current.DisplayNumber).CopyTo(response, 9);
+                    }
                     break;
                 case StopRequest:
                     stopRequested = password == null;
@@ -430,7 +473,7 @@ internal static class MaskControl
     private static extern SafePipeHandle CreateNamedPipe(string name, uint openMode, uint pipeMode, uint instances,
         uint outBufferSize, uint inBufferSize, uint timeout, ref SecurityAttributes attributes);
     [DllImport("kernel32.dll")] private static extern bool GetNamedPipeServerProcessId(SafePipeHandle pipe, out uint processId);
-    [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint processId);
+    [DllImport("user32.dll")] internal static extern bool AllowSetForegroundWindow(uint processId);
     [DllImport("kernel32.dll")] private static extern uint WTSGetActiveConsoleSessionId();
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern IntPtr GetProcessWindowStation();

@@ -3,7 +3,8 @@ param(
     [ValidateSet('Start', 'Status', 'Stop')][string]$Action,
     [ValidateRange(1, 3600)][int]$Seconds = 600,
     [switch]$UntilUnlocked,
-    [string]$Exe
+    [string]$Exe,
+    [ValidateRange(1, 2147483647)][int]$Display
 )
 
 Set-StrictMode -Version Latest
@@ -14,6 +15,7 @@ if (-not $PSBoundParameters.ContainsKey('Exe')) {
 }
 $actionName = @{ start = 'Start'; status = 'Status'; stop = 'Stop' }[$Action]
 $hasSeconds = $PSBoundParameters.ContainsKey('Seconds')
+$hasDisplay = $PSBoundParameters.ContainsKey('Display')
 $invalidOptions = $UntilUnlocked -and ($Action -ne 'Start' -or $hasSeconds)
 if ($Action -eq 'Start' -and -not $hasSeconds -and -not $UntilUnlocked) { $actionName = 'Default' }
 $durationArgument = if ($UntilUnlocked) { 0 } else { $Seconds }
@@ -25,9 +27,14 @@ try {
         $failure = 'invalid-arguments'
         throw '-UntilUnlocked applies only to Start and cannot be combined with -Seconds.'
     }
+    if ($hasDisplay -and $Action -ne 'Start') {
+        $failure = 'invalid-arguments'
+        throw '-Display applies only to Start.'
+    }
     $info = [Diagnostics.ProcessStartInfo]::new()
     $info.FileName = (Resolve-Path -LiteralPath $Exe).ProviderPath
     $info.Arguments = "--control $actionName $durationArgument"
+    if ($hasDisplay) { $info.Arguments += " $Display" }
     $info.UseShellExecute = $false
     $info.CreateNoWindow = $true
     $info.RedirectStandardOutput = $true
@@ -46,7 +53,7 @@ try {
     exit $process.ExitCode
 }
 catch {
-    @{ state = 'unavailable'; expiresAt = $null; reason = $failure } | ConvertTo-Json -Compress
+    @{ state = 'unavailable'; expiresAt = $null; reason = $failure; passwordProtected = $false; display = $null } | ConvertTo-Json -Compress
     exit 1
 }
 finally {
